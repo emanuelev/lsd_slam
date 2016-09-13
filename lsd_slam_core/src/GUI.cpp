@@ -11,7 +11,8 @@ GUI::GUI()
  : depthImg(0),
    depthImgBuffer(0)
 {
-    pangolin::CreateGlutWindowAndBind("Main", 1280 + 180, 960, GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE);
+    // pangolin::CreateGlutWindowAndBind("Main", 1280 + 180, 960, GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE);
+    pangolin::CreateWindowAndBind("Main", 1280 + 180, 960);
 
     glDisable(GL_MULTISAMPLE);
 
