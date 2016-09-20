@@ -18,14 +18,12 @@
 * along with LSD-SLAM. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "LiveSLAMWrapper.h"
-
 #include <boost/thread.hpp>
 #include "util/settings.h"
 #include "util/Parse.h"
 #include "util/globalFuncs.h"
 #include "util/ThreadMutexObject.h"
-#include "IOWrapper/Pangolin/PangolinOutput3DWrapper.h"
+
 #include "SlamSystem.h"
 
 #include <sstream>
@@ -34,17 +32,11 @@
 #include <algorithm>
 
 #include "util/Undistorter.h"
-#include "util/RawLogReader.h"
 
 #include "opencv2/opencv.hpp"
 
-#include "GUI.h"
-
 std::vector<std::string> files;
 int w, h, w_inp, h_inp;
-ThreadMutexObject<bool> lsdDone(false);
-GUI gui;
-RawLogReader * logReader = 0;
 int numFrames = 0;
 
 std::string &ltrim(std::string &s) {
@@ -134,80 +126,54 @@ int getFile (std::string source, std::vector<std::string> &files)
 
 using namespace lsd_slam;
 
-void run(SlamSystem * system, Undistorter* undistorter, Output3DWrapper* outputWrapper, Sophus::Matrix3f K)
+void run(SlamSystem * system, Undistorter* undistorter, Sophus::Matrix3f K)
 {
-    // get HZ
-    double hz = 30;
+  // get HZ
+  double hz = 30;
 
-    cv::Mat image = cv::Mat(h, w, CV_8U);
-    int runningIDX=0;
-    float fakeTimeStamp = 0;
+  cv::Mat image = cv::Mat(h, w, CV_8U);
+  int runningIDX=0;
+  float fakeTimeStamp = 0;
 
-    for(unsigned int i = 0; i < numFrames; i++)
+  printf("frame\tX\tY\tZ");
+  for(unsigned int i = 0; i < numFrames; i++)
+  {
+    cv::Mat imageDist = cv::Mat(h, w, CV_8U);
+
+    imageDist = cv::imread(files[i], CV_LOAD_IMAGE_GRAYSCALE);
+
+    if(imageDist.rows != h_inp || imageDist.cols != w_inp)
     {
-        if(lsdDone.getValue())
-            break;
+      if(imageDist.rows * imageDist.cols == 0)
+        printf("failed to load image %s! skipping.\n", files[i].c_str());
+      else
+        printf("image %s has wrong dimensions - expecting %d x %d, found %d x %d. Skipping.\n",
+            files[i].c_str(),
+            w,h,imageDist.cols, imageDist.rows);
+      continue;
+    }
+    assert(imageDist.type() == CV_8U);
 
-        cv::Mat imageDist = cv::Mat(h, w, CV_8U);
+    undistorter->undistort(imageDist, image);
 
-        if(logReader)
-        {
-            logReader->getNext();
+    assert(image.type() == CV_8U);
 
-            cv::Mat3b img(h, w, (cv::Vec3b *)logReader->rgb);
-
-            cv::cvtColor(img, imageDist, CV_RGB2GRAY);
-        }
-        else
-        {
-            imageDist = cv::imread(files[i], CV_LOAD_IMAGE_GRAYSCALE);
-
-            if(imageDist.rows != h_inp || imageDist.cols != w_inp)
-            {
-                if(imageDist.rows * imageDist.cols == 0)
-                    printf("failed to load image %s! skipping.\n", files[i].c_str());
-                else
-                    printf("image %s has wrong dimensions - expecting %d x %d, found %d x %d. Skipping.\n",
-                            files[i].c_str(),
-                            w,h,imageDist.cols, imageDist.rows);
-                continue;
-            }
-        }
-
-        assert(imageDist.type() == CV_8U);
-
-        undistorter->undistort(imageDist, image);
-
-        assert(image.type() == CV_8U);
-
-        if(runningIDX == 0)
-        {
-            system->randomInit(image.data, fakeTimeStamp, runningIDX);
-        }
-        else
-        {
-            system->trackFrame(image.data, runningIDX, hz == 0, fakeTimeStamp);
-        }
-
-        gui.pose.assignValue(system->getCurrentPoseEstimateScale());
-
-        runningIDX++;
-        fakeTimeStamp+=0.03;
-
-        if(fullResetRequested)
-        {
-            printf("FULL RESET!\n");
-            delete system;
-
-            system = new SlamSystem(w, h, K, doSlam);
-            system->setVisualization(outputWrapper);
-
-            fullResetRequested = false;
-            runningIDX = 0;
-        }
+    if(runningIDX == 0)
+    {
+      system->randomInit(image.data, fakeTimeStamp, runningIDX);
+    }
+    else
+    {
+      system->trackFrame(image.data, runningIDX, hz == 0, fakeTimeStamp);
+      Sophus::Sim3f pose = system->getCurrentPoseEstimateScale();
+      Sophus::Vector3f trans = pose.translation();
+      printf("%d\t%.3f\t%.3f\t%.3f\n", runningIDX, 
+          trans[0], trans[1], trans[2]);
     }
 
-    lsdDone.assignValue(true);
+    runningIDX++;
+    fakeTimeStamp+=0.03;
+  }
 }
 
 int main( int argc, char** argv )
@@ -241,17 +207,8 @@ int main( int argc, char** argv )
 	Sophus::Matrix3f K;
 	K << fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0;
 
-	Resolution::getInstance(w, h);
-	Intrinsics::getInstance(fx, fy, cx, cy);
-
-	gui.initImages();
-
-	Output3DWrapper* outputWrapper = new PangolinOutput3DWrapper(w, h, gui);
-
 	// make slam system
 	SlamSystem * system = new SlamSystem(w, h, K, doSlam);
-	system->setVisualization(outputWrapper);
-
 
 	// open image files: first try to open as file.
 	std::string source;
@@ -261,61 +218,25 @@ int main( int argc, char** argv )
 		exit(0);
 	}
 
-	Bytef * decompressionBuffer = new Bytef[Resolution::getInstance().numPixels() * 2];
-    IplImage * deCompImage = 0;
+  if(getdir(source, files) >= 0)
+  {
+    printf("found %d image files in folder %s!\n", (int)files.size(), source.c_str());
+  }
+  else if(getFile(source, files) >= 0)
+  {
+    printf("found %d image files in file %s!\n", (int)files.size(), source.c_str());
+  }
+  else
+  {
+    printf("could not load file list! wrong path / file?\n");
+  }
 
-    if(source.substr(source.find_last_of(".") + 1) == "klg")
-    {
-        logReader = new RawLogReader(decompressionBuffer,
-                                     deCompImage,
-                                     source);
+  numFrames = (int)files.size();
 
-        numFrames = logReader->getNumFrames();
-    }
-    else
-    {
-        if(getdir(source, files) >= 0)
-        {
-            printf("found %d image files in folder %s!\n", (int)files.size(), source.c_str());
-        }
-        else if(getFile(source, files) >= 0)
-        {
-            printf("found %d image files in file %s!\n", (int)files.size(), source.c_str());
-        }
-        else
-        {
-            printf("could not load file list! wrong path / file?\n");
-        }
+	run(system, undistorter, K);
 
-        numFrames = (int)files.size();
-    }
-
-	boost::thread lsdThread(run, system, undistorter, outputWrapper, K);
-
-	while(!pangolin::ShouldQuit())
-	{
-	    if(lsdDone.getValue() && !system->finalized)
-	    {
-	        system->finalize();
-	    }
-
-	    gui.preCall();
-
-	    gui.drawKeyframes();
-
-	    gui.drawFrustum();
-
-	    gui.drawImages();
-
-	    gui.postCall();
-	}
-
-	lsdDone.assignValue(true);
-
-	lsdThread.join();
 
 	delete system;
 	delete undistorter;
-	delete outputWrapper;
 	return 0;
 }

@@ -12,10 +12,10 @@ find_package(SuiteParse REQUIRED) # Apparently needed by g2o
 
 # FabMap
 # uncomment this part to enable fabmap
-#add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/openFabMap)
-#include_directories(${PROJECT_SOURCE_DIR}/thirdparty/openFabMap/include)
-#add_definitions("-DHAVE_FABMAP")
-#set(FABMAP_LIB openFABMAP )
+# add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/openFabMap)
+# include_directories(${PROJECT_SOURCE_DIR}/thirdparty/openFabMap/include)
+# add_definitions("-DHAVE_FABMAP")
+# set(FABMAP_LIB openFABMAP )
 
 # SSE flags
 add_definitions("-DENABLE_SSE")
