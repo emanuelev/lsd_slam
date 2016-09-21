@@ -140,60 +140,49 @@ void run(SlamSystem * system, Undistorter* undistorter, Output3DWrapper* outputW
     double hz = 30;
 
     cv::Mat image = cv::Mat(h, w, CV_8U);
+    cv::Mat imageDist = cv::Mat(h, w, CV_8U);
+
     int runningIDX=0;
     float fakeTimeStamp = 0;
 
-    for(unsigned int i = 0; i < numFrames; i++)
+    // Bootstrapping - BIG assumption that the first frame is actually good.
+    imageDist = cv::imread(files[0], CV_LOAD_IMAGE_GRAYSCALE);
+    undistorter->undistort(imageDist, image);
+    system->randomInit(image.data, fakeTimeStamp, runningIDX);
+
+    for(unsigned int i = 1; i < numFrames; i++)
     {
         if(lsdDone.getValue())
             break;
 
-        cv::Mat imageDist = cv::Mat(h, w, CV_8U);
-
-        if(logReader)
+        imageDist = cv::imread(files[i], CV_LOAD_IMAGE_GRAYSCALE);
+        if(imageDist.rows != h_inp || imageDist.cols != w_inp)
         {
-            logReader->getNext();
-
-            cv::Mat3b img(h, w, (cv::Vec3b *)logReader->rgb);
-
-            cv::cvtColor(img, imageDist, CV_RGB2GRAY);
-        }
-        else
-        {
-            imageDist = cv::imread(files[i], CV_LOAD_IMAGE_GRAYSCALE);
-
-            if(imageDist.rows != h_inp || imageDist.cols != w_inp)
-            {
-                if(imageDist.rows * imageDist.cols == 0)
-                    printf("failed to load image %s! skipping.\n", files[i].c_str());
-                else
-                    printf("image %s has wrong dimensions - expecting %d x %d, found %d x %d. Skipping.\n",
-                            files[i].c_str(),
-                            w,h,imageDist.cols, imageDist.rows);
-                continue;
-            }
+          printf("image %s has wrong dimensions - expecting %d x %d, \
+              found %d x %d. Skipping.\n",
+              files[i].c_str(),
+              w,h,imageDist.cols, imageDist.rows);
+          continue;
         }
 
-        assert(imageDist.type() == CV_8U);
+        assert(imageDist.type() == CV_8U && 
+               "Read image is not of uchar type (i.e. greyscale)");
 
         undistorter->undistort(imageDist, image);
 
-        assert(image.type() == CV_8U);
+        assert(image.type() == CV_8U && 
+               "Undistorted image is not of uchar type (i.e. greyscale");
 
-        if(runningIDX == 0)
-        {
-            system->randomInit(image.data, fakeTimeStamp, runningIDX);
-        }
-        else
-        {
-            system->trackFrame(image.data, runningIDX, hz == 0, fakeTimeStamp);
-            system->doMappingIteration();
-        }
+        // SE3 Tracking routine
+        system->trackFrame(image.data, runningIDX, hz == 0, fakeTimeStamp);
 
-        gui.pose.assignValue(system->getCurrentPoseEstimateScale());
+        // Keyframe depth mapping routine
+        system->doMappingIteration();
 
         runningIDX++;
         fakeTimeStamp+=0.03;
+
+        gui.pose.assignValue(system->getCurrentPoseEstimateScale());
 
         if(fullResetRequested)
         {
