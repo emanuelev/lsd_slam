@@ -108,7 +108,7 @@ SlamSystem::SlamSystem(int w, int h, Eigen::Matrix3f K, bool enableSLAM)
 	depthMapScreenshotFlag = false;
 	lastTrackingClosenessScore = 0;
 
-	thread_mapping = boost::thread(&SlamSystem::mappingThreadLoop, this);
+	// thread_mapping = boost::thread(&SlamSystem::mappingThreadLoop, this);
 
 	if(SLAMEnabled)
 	{
@@ -131,8 +131,8 @@ SlamSystem::~SlamSystem()
 
 	// make sure none is waiting for something.
 	printf("... waiting for SlamSystem's threads to exit\n");
-	newFrameMappedSignal.notify_all();
-	unmappedTrackedFramesSignal.notify_all();
+	// newFrameMappedSignal.notify_all();
+	// unmappedTrackedFramesSignal.notify_all();
 	newKeyFrameCreatedSignal.notify_all();
 	newConstraintCreatedSignal.notify_all();
 
@@ -196,27 +196,6 @@ void SlamSystem::mergeOptimizationOffset()
 		publishKeyframeGraph();
 }
 
-
-
-void SlamSystem::mappingThreadLoop()
-{
-	printf("Started mapping thread!\n");
-	while(keepRunning)
-	{
-		if (!doMappingIteration())
-		{
-			boost::unique_lock<boost::mutex> lock(unmappedTrackedFramesMutex);
-			unmappedTrackedFramesSignal.timed_wait(lock,boost::posix_time::milliseconds(200));	// slight chance of deadlock otherwise
-			lock.unlock();
-		}
-
-		newFrameMappedMutex.lock();
-		newFrameMappedSignal.notify_all();
-		newFrameMappedMutex.unlock();
-	}
-	printf("Exited mapping thread \n");
-}
-
 void SlamSystem::finalize()
 {
     finalized = true;
@@ -244,18 +223,11 @@ void SlamSystem::finalize()
 	}
 
 	printf("Finalizing Graph... publishing!!\n");
-	unmappedTrackedFramesMutex.lock();
-	unmappedTrackedFramesSignal.notify_one();
-	unmappedTrackedFramesMutex.unlock();
 
 	while(doFinalOptimization)
 	{
 		usleep(200000);
 	}
-
-	boost::unique_lock<boost::mutex> lock(newFrameMappedMutex);
-	newFrameMappedSignal.wait(lock);
-	newFrameMappedSignal.wait(lock);
 
 	usleep(200000);
 	printf("Done Finalizing Graph.!!\n");
@@ -543,7 +515,6 @@ bool SlamSystem::updateKeyframe()
 	std::shared_ptr<Frame> reference = nullptr;
 	std::deque< std::shared_ptr<Frame> > references;
 
-	unmappedTrackedFramesMutex.lock();
 
 	// remove frames that have a different tracking parent.
 	while(unmappedTrackedFrames.size() > 0 &&
@@ -562,7 +533,6 @@ bool SlamSystem::updateKeyframe()
 
 		std::shared_ptr<Frame> popped = unmappedTrackedFrames.front();
 		unmappedTrackedFrames.pop_front();
-		unmappedTrackedFramesMutex.unlock();
 
 		if(enablePrintDebugInfo && printThreadingInfo)
 			printf("MAPPING %d on %d to %d (%d frames)\n", currentKeyFrame->id(), references.front()->id(), references.back()->id(), (int)references.size());
@@ -574,7 +544,6 @@ bool SlamSystem::updateKeyframe()
 	}
 	else
 	{
-		unmappedTrackedFramesMutex.unlock();
 		return false;
 	}
 
@@ -723,10 +692,8 @@ void SlamSystem::takeRelocalizeResult()
 	{
 		keyFrameGraph->addFrame(succFrame.get());
 
-		unmappedTrackedFramesMutex.lock();
 		if(unmappedTrackedFrames.size() < 50)
 			unmappedTrackedFrames.push_back(succFrame);
-		unmappedTrackedFramesMutex.unlock();
 
 		currentKeyFrameMutex.lock();
 		createNewKeyFrame = false;
@@ -894,10 +861,6 @@ void SlamSystem::trackFrame(uchar* image, unsigned int frameID, bool blockUntilM
 	if(!trackingIsGood)
 	{
 		relocalizer.updateCurrentFrame(trackingNewFrame);
-
-		unmappedTrackedFramesMutex.lock();
-		unmappedTrackedFramesSignal.notify_one();
-		unmappedTrackedFramesMutex.unlock();
 		return;
 	}
 
@@ -956,11 +919,6 @@ void SlamSystem::trackFrame(uchar* image, unsigned int frameID, bool blockUntilM
 
 		trackingIsGood = false;
 		nextRelocIdx = -1;
-
-		unmappedTrackedFramesMutex.lock();
-		unmappedTrackedFramesSignal.notify_one();
-		unmappedTrackedFramesMutex.unlock();
-
 		manualTrackingLossIndicated = false;
 		return;
 	}
@@ -1019,23 +977,8 @@ void SlamSystem::trackFrame(uchar* image, unsigned int frameID, bool blockUntilM
 	}
 
 
-	unmappedTrackedFramesMutex.lock();
 	if(unmappedTrackedFrames.size() < 50 || (unmappedTrackedFrames.size() < 100 && trackingNewFrame->getTrackingParent()->numMappedOnThisTotal < 10))
 		unmappedTrackedFrames.push_back(trackingNewFrame);
-	unmappedTrackedFramesSignal.notify_one();
-	unmappedTrackedFramesMutex.unlock();
-
-	// implement blocking
-	if(blockUntilMapped && trackingIsGood)
-	{
-		boost::unique_lock<boost::mutex> lock(newFrameMappedMutex);
-		while(unmappedTrackedFrames.size() > 0)
-		{
-			//printf("TRACKING IS BLOCKING, waiting for %d frames to finish mapping.\n", (int)unmappedTrackedFrames.size());
-			newFrameMappedSignal.wait(lock);
-		}
-		lock.unlock();
-	}
 }
 
 

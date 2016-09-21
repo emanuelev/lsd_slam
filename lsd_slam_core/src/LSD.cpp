@@ -187,6 +187,7 @@ void run(SlamSystem * system, Undistorter* undistorter, Output3DWrapper* outputW
         else
         {
             system->trackFrame(image.data, runningIDX, hz == 0, fakeTimeStamp);
+            system->doMappingIteration();
         }
 
         gui.pose.assignValue(system->getCurrentPoseEstimateScale());

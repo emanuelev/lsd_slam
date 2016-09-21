@@ -159,12 +159,6 @@ private:
 	bool doFinalOptimization;
 	float lastTrackingClosenessScore;
 
-	// for sequential operation. Set in Mapping, read in Tracking.
-	boost::condition_variable  newFrameMappedSignal;
-	boost::mutex newFrameMappedMutex;
-
-
-
 	// USED DURING RE-LOCALIZATION ONLY
 	Relocalizer relocalizer;
 
@@ -185,9 +179,7 @@ private:
 
 
 	// PUSHED in tracking, READ & CLEARED in mapping
-	std::deque< std::shared_ptr<Frame> > unmappedTrackedFrames;
-	boost::mutex unmappedTrackedFramesMutex;
-	boost::condition_variable  unmappedTrackedFramesSignal;
+	   std::deque< std::shared_ptr<Frame> > unmappedTrackedFrames;
 
 
 	// PUSHED by Mapping, READ & CLEARED by constraintFinder
@@ -235,9 +227,6 @@ private:
 
 	/** Merges the current keyframe optimization offset to all working entities. */
 	void mergeOptimizationOffset();
-	
-
-	void mappingThreadLoop();
 
 	void finishCurrentKeyframe();
 	void discardCurrentKeyframe();
