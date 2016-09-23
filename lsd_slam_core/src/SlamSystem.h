@@ -63,13 +63,11 @@ public:
 	int width;
 	int height;
 	Eigen::Matrix3f K;
-	const bool SLAMEnabled;
-
 	bool trackingIsGood;
 
 	bool finalized;
 
-	SlamSystem(int w, int h, Eigen::Matrix3f K, bool enableSLAM = true);
+	SlamSystem(int w, int h, Eigen::Matrix3f K);
 	SlamSystem(const SlamSystem&) = delete;
 	SlamSystem& operator=(const SlamSystem&) = delete;
 	~SlamSystem();
@@ -197,8 +195,6 @@ private:
 
 	// threads
 	boost::thread thread_mapping;
-	boost::thread thread_constraint_search;
-	boost::thread thread_optimization;
 	bool keepRunning; // used only on destruction to signal threads to finish.
 
 

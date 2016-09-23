@@ -189,7 +189,7 @@ void run(SlamSystem * system, Undistorter* undistorter, Output3DWrapper* outputW
             printf("FULL RESET!\n");
             delete system;
 
-            system = new SlamSystem(w, h, K, doSlam);
+            system = new SlamSystem(w, h, K);
             system->setVisualization(outputWrapper);
 
             fullResetRequested = false;
@@ -239,7 +239,7 @@ int main( int argc, char** argv )
 	Output3DWrapper* outputWrapper = new PangolinOutput3DWrapper(w, h, gui);
 
 	// make slam system
-	SlamSystem * system = new SlamSystem(w, h, K, doSlam);
+	SlamSystem * system = new SlamSystem(w, h, K);
 	system->setVisualization(outputWrapper);
 
 

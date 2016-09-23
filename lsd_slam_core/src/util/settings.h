@@ -238,7 +238,6 @@ extern float cameraPixelNoise2;
 extern float depthSmoothingFactor;
 
 extern bool useFabMap;
-extern bool doSlam;
 extern bool doKFReActivation;
 extern bool doMapping;
 
