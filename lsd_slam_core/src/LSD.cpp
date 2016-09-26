@@ -284,10 +284,6 @@ int main( int argc, char** argv )
 
 	while(!pangolin::ShouldQuit())
 	{
-	    if(lsdDone.getValue() && !system->finalized)
-	    {
-	        system->finalize();
-	    }
 
 	    gui.preCall();
 
